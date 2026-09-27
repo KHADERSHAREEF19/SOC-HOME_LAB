@@ -1,7 +1,11 @@
-<h1 align="center">🛡️ Basic SOC Homelab</h1>
+<img width="1472" height="680" alt="image" src="https://github.com/user-attachments/assets/5c6f5acc-68e4-4069-bdbf-fd55d04e094d" /><h1 align="center">🛡️ Basic SOC Homelab</h1>
 
 <p align="center">
   <b>A Basic, Cost-Free SOC Homelab Project for Detection Engineering & Adversary Simulation</b>
+</p>
+<p align="center">
+  <img src="<img width="1472" height="680" alt="image" src="https://github.com/user-attachments/assets/61c6b2dd-064c-4ed3-b5df-cdd4eebfe718" />
+" alt="Basic SOC Homelab Architecture" width="100%">
 </p>
 
 <hr>
@@ -122,4 +126,33 @@ NET START WazuhSvc</code></pre>
     <li>Confirm <code>192.168.1.11</code> shows as <b>Active</b> under the <b>Agents</b> tab.</li>
     <li>Perform test attacks from Kali (<code>192.168.1.8</code>) and verify security alerts trigger on the dashboard in real-time.</li>
   </ul>
+</div>
+<div style="background-color: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 20px; color: #c9d1d9;">
+  <h2 style="color: #58a6ff; margin-top: 0;">🔄 LAB Workflow & Telemetry Pipeline</h2>
+  
+  <pre style="background-color: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 6px; color: #e6edf3; font-family: monospace;">[ Kali Linux (192.168.1.8) ]
+          │
+          │ 1. Attacks / Scans (Nmap, Hydra, PowerShell)
+          ▼
+[ Windows 11 Target (192.168.1.11) ]
+          │
+          │ 2. Telemetry Generation (Sysmon + Event Viewer)
+          ▼
+[ Wazuh Agent (192.168.1.11) ]
+          │
+          │ 3. Encrypted Log Shipping (Port 1514)
+          ▼
+[ Ubuntu Server / Wazuh Manager (192.168.1.25) ]
+          │
+          │ 4. Correlation & Alert Generation
+          ▼
+[ Wazuh Dashboard (SOC Analyst View) ]</pre>
+
+  <h3 style="color: #58a6ff;">📋 Operational Steps</h3>
+  <ol>
+    <li><b>Attack Emulation:</b> Kali Linux executes simulated scans and exploit attempts against the Windows endpoint.</li>
+    <li><b>Telemetry Capture:</b> Windows 11 captures process creation and system events using Sysmon and Event Logs.</li>
+    <li><b>Log Shipping:</b> The Wazuh Agent forwards telemetry securely to Ubuntu Server over port 1514.</li>
+    <li><b>Correlation & Detection:</b> Wazuh Manager parses logs against detection rules and generates alerts on the SOC dashboard.</li>
+  </ol>
 </div>
