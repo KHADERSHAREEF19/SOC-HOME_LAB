@@ -4,8 +4,7 @@
   <b>A Basic, Cost-Free SOC Homelab Project for Detection Engineering & Adversary Simulation</b>
 </p>
 <p align="center">
-  <img src="<img width="1472" height="680" alt="image" src="https://github.com/user-attachments/assets/61c6b2dd-064c-4ed3-b5df-cdd4eebfe718" />
-" alt="Basic SOC Homelab Architecture" width="100%">
+
 </p>
 
 <hr>
