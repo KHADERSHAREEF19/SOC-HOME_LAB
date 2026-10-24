@@ -15,8 +15,7 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-yellow">
 </p>
 
-<img width="1472" height="680" alt="Splunk SOC Dashboard" src="" />
--->
+<img width="1472" height="680" alt="Splunk SOC Dashboard" src="Cybersecurity Logging Pipeline Diagram.png" />
 
 
 ## 📌 Table of Contents
