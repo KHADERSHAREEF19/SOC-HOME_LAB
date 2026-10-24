@@ -3,11 +3,12 @@
 | Field | Value |
 |-------|-------|
 | **Report ID** | IR-YYYY-NNN |
-| **Title** | e.g. Brute-force attack against WIN11-PRO |
+| **Title** | e.g. Brute-force attack against WIN-DC01 |
 | **Severity** | 🔴 Critical / 🟠 High / 🟡 Medium / 🔵 Low |
 | **Status** | Open / Contained / Closed |
 | **Category** | e.g. Credential Access — T1110.001 |
 | **Related simulation** | SIM-XX |
+| **SIEM** | Splunk Enterprise — `http://192.168.1.25:8000` (index `main`) |
 | **Analyst** | Khader Shareef Madani |
 | **Date opened** | YYYY-MM-DD HH:MM (UTC+05:30 / note your TZ) |
 | **Date closed** | YYYY-MM-DD HH:MM |
@@ -21,29 +22,30 @@ what happened, to which asset, was it successful, what is the current status.*
 
 | Type | Value | Role |
 |------|-------|------|
-| Host | | |
-| Account | | |
-| Source IP | | |
+| Host | | e.g. WIN-DC01 (Domain Controller) |
+| Account | | `Account_Name` field |
+| Source IP | | `Source_Network_Address` field |
 
 ## 3. Timeline (all times in <TZ>)
 
 | Time | Event | Source |
 |------|-------|--------|
-| | First observed activity | |
-| | Alert triggered (rule ID) | |
-| | Triage started | |
-| | Containment action | |
-| | Monitoring restored / closed | |
+| | First observed activity (EventCode …) | `WinEventLog:Security` |
+| | Saved search triggered | Splunk → Triggered Alerts |
+| | Triage started | Analyst |
+| | Containment action | Analyst |
+| | Monitoring restored / closed | Analyst |
 
 ## 4. Observations & Evidence
 
 ### 4.1 Detection
 
-- **Rule / alert ID:**
-- **Query used:**
+- **Saved search / alert name:** (from [`../configs/savedsearches.conf`](../configs/savedsearches.conf))
+- **SPL used:**
+  ```spl
   ```
-  ```
-- **Key fields observed:** source IP, account, event IDs, counts, time window
+- **Key fields observed:** `EventCode`, `Account_Name`, `Source_Network_Address`,
+  counts, time window
 
 ### 4.2 Evidence screenshots
 
@@ -58,7 +60,7 @@ confidence level, alternative explanations considered (and ruled out).*
 
 ## 5. Impact Assessment
 
-*What could the attacker access/do? Data sensitivity of the host/account.
+*What could the attacker access/do? Data/domain sensitivity of the host/account.
 Why this severity level (tie it to the rubric in README.md).*
 
 ## 6. Response Actions
@@ -75,16 +77,17 @@ service, weak password policy, etc.)*
 ## 8. Detection Gaps & Improvements
 
 - **Gap:**
-- **Proposed rule/query change:**
+- **Proposed SPL change:** (paste the improved search)
 - **Process improvement:**
 
 ## 9. Escalation Notes (Tier 2/3)
 
-*What should the next tier investigate? Recommended hunts, forensics, or
+*What should the next tier investigate? Recommended hunts (with SPL), forensics, or
 enterprise-wide sweeps.*
 
 ## 10. References
 
 - MITRE ATT&CK: `Txxxx`
-- Related rules: `1001xx`
+- Saved searches: `"…"` ([`../configs/savedsearches.conf`](../configs/savedsearches.conf))
 - Related runbook: `simulations/SIM-XX-...md`
+- Query files: `queries/XX-....spl`

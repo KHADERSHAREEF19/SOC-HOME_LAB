@@ -1,44 +1,45 @@
-# SIM-05 — Defense Evasion: Log Clearing & Agent Tampering ⚠️ run last
+# SIM-05 — Defense Evasion: Audit Log Wipe & Forwarder Tampering ⚠️ run last
 
 | | |
 |---|---|
 | **ID** | SIM-05 |
 | **ATT&CK** | T1070.001 Indicator Removal: Clear Windows Event Logs · T1562.001 Impair Defenses: Disable or Modify Tools |
 | **Tactic** | Defense Evasion |
-| **Attacker** | Simulated foothold on `192.168.1.11` (local admin `testuser`) |
-| **Target** | Windows 11 `192.168.1.11` + its Wazuh agent |
-| **Detection rules** | `100120` (wevtutil clear) · built-in Windows 1102 rule · built-in agent-disconnect alert |
+| **Attacker** | Simulated foothold on the DC `192.168.1.11` (local admin) |
+| **Target** | Windows Server 2022 DC `192.168.1.11` + its Splunk Universal Forwarder |
+| **Detection** | Saved search **"Defense Evasion - Audit Log Cleared 1102"** → [`queries/05-log-wipe.spl`](../queries/05-log-wipe.spl) |
 | **Status** | ☐ Planned → ☐ Executed → ☐ Documented |
 | **Date performed** | YYYY-MM-DD |
 
 ## Objective
 
-Emulate the moment a real actor tries to **cover their tracks**: clearing the Security log
-and stopping the monitoring agent. Two lessons drive this simulation:
+Emulate the moment a real actor tries to **cover their tracks**: wiping the audit log and
+stopping the telemetry forwarder. Two lessons drive this simulation:
 
-1. **Log clearing leaves its own loud evidence** (Event 1102 + Sysmon) — a gift to defenders.
-2. **Agent tampering creates a telemetry gap**, and *the gap itself is evidence*.
+1. **Log clearing leaves its own loud evidence** (Event 1102) — a gift to defenders.
+   The event is written *after* the wipe, so it survives the clearing, and it **names the
+   account that did it**.
+2. **Forwarder tampering creates a telemetry gap**, and *the gap itself is evidence*.
 
 > ⚠️ **Order matters:** run this *after* SIM-01–04, since clearing the Security log erases
-> prior raw events (Wazuh retains what it already ingested — that retention is itself
-> a talking point for your report).
+> prior raw local events. Splunk's index retains everything already forwarded — that
+> retention difference (local log vs indexed data) is itself a great report talking point.
 
 ## Scope & Safety
 
 - Both actions run only on `192.168.1.11`.
-- The agent is restarted in the cleanup phase so the lab returns to full monitoring.
+- The forwarder is restarted in the cleanup phase so the lab returns to full monitoring.
 
 ## Prerequisites
 
 - [ ] SIM-01–04 executed and evidence captured (this sim destroys raw local logs!)
-- [ ] Rules `100120` + Windows 1102 detection active
-- [ ] You know how to restart the Wazuh agent service
+- [ ] Splunk time range set; you know how to restart the Universal Forwarder service
 
 ---
 
 ## 1. Attack Execution
 
-### Phase A — Clear the Windows Security log
+### Phase A — Wipe the Windows audit log
 
 ```cmd
 wevtutil cl Security
@@ -52,78 +53,85 @@ wevtutil cl System
 wevtutil cl "Windows PowerShell"
 ```
 
-### Phase B — Stop the monitoring agent
+### Phase B — Stop the telemetry forwarder
 
 ```cmd
-NET STOP WazuhSvc
+NET STOP SplunkForwarder
 ```
 
 📸 Screenshot: `screenshots/09a_wevtutil_clear.png` — terminal + confirmation output.
 
 ## 2. Expected Telemetry
 
-| Action | Source | Event | Why it matters |
-|--------|--------|-------|----------------|
-| Log cleared | Windows Security **1102** (written to the *new* empty log) | "The audit log was cleared" | Names the clearing account & time — survives the wipe |
-| `wevtutil` executed | Sysmon **EID 1** → rule **`100120`** | alert | Command line proves intent (`cl Security`) |
-| Agent stopped | Wazuh **agent disconnect** (manager-side) | monitoring gap | Absence of events = evidence |
-| Event volume | Dashboard | sudden drop to zero for `WIN11-PRO` | The "gap window" for your report |
+| Action | Source | EventCode | Why it matters |
+|--------|--------|-----------|----------------|
+| Log wiped | `WinEventLog:Security` | **1102** | Written to the *new* empty log — survives the wipe, names the account |
+| Forwarder stopped | `WinEventLog:System` | **7036** (service state change) | "The Splunk Forwarder Service service entered the stopped state" — visible *if* it shipped before the gap |
+| Detection | Saved search **Defense Evasion - Audit Log Cleared 1102** | — | `Account_Name`, `Domain_Name`, `Log_Name` |
+| Event volume | Splunk | sudden drop to zero for `WIN-DC01` | The "gap window" for your report |
 
 📸 Screenshots:
-- `screenshots/09_event_1102_log_cleared.png` — Event 1102 in Event Viewer / Wazuh
-- `screenshots/09b_agent_disconnected.png` — Wazuh Agents page showing disconnect
+- `screenshots/09_event_1102_log_cleared.png` — SPL results / Triggered Alert for EventCode 1102
+- `screenshots/09b_forwarder_stopped.png` — `splunk list forward-server` / service stopped + the event-volume drop in Splunk
 
-## 3. Detection
+## 3. Detection (SPL)
 
-Queries (see [`../queries/defense-evasion.md`](../queries/defense-evasion.md)):
+Run in Splunk Web (raw file: [`05-log-wipe.spl`](../queries/05-log-wipe.spl)):
 
-```
-rule.id : 100120
-```
-
-```
-data.win.system.eventID : 1102
+```spl
+index=main sourcetype="WinEventLog:Security" EventCode=1102
+| table _time, host, Account_Name, Domain_Name, Log_Name
 ```
 
-```
-agent.name : WIN11-PRO    # look for the gap in the event histogram
+Forwarder tamper pivot (System channel):
+
+```spl
+index=main sourcetype="WinEventLog:System" EventCode=7036 host="WIN-DC01"
+| search Message="*Splunk*"
+| table _time, host, Message
 ```
 
 ## 4. Triage Walkthrough
 
-1. Open the 1102 event → **note the account name** — that account is hostile until proven otherwise.
+1. Open the 1102 event → **note `Account_Name`** — that account is hostile until proven otherwise.
 2. Ask the critical question: *what did the attacker do before wiping the logs?*
-   Pivot to Wazuh (it retains ingested events even after the source log is cleared):
+   Pivot to the Splunk index (indexed data survives the local wipe):
 
-   ```
-   agent.name : WIN11-PRO AND rule.groups : (brute_force or persistence or windows_powershell)
+   ```spl
+   index=main host="WIN-DC01" earliest=-24h
+   | search (EventCode=4625 OR EventCode=4624 OR EventCode=4720 OR EventCode=1) NOT EventCode=1102
+   | table _time, EventCode, Account_Name, CommandLine
+   | sort _time
    ```
 
-3. Define the **gap window** (agent stop → restart) and state it explicitly in the report.
-4. Correlate: 1102 + agent stop within minutes of each other = deliberate anti-forensics,
-   almost never an accident. Raise severity.
-5. Contain: re-enable logging, restart the agent, isolate the host if still live.
+3. Define the **gap window** (forwarder stop → restart) from the event-volume drop and
+   state it explicitly in the report.
+4. Correlate: 1102 + forwarder stop within minutes of each other = deliberate anti-forensics,
+   almost never an accident. Raise severity to Critical.
+5. Contain: re-enable logging, restart the forwarder, isolate the host if still live.
 
 ## 5. Response & Cleanup (mandatory)
 
 ```cmd
-# Re-enable and restart monitoring
+:: Re-enable and restart monitoring
 wevtutil sl Security /e:true
-NET START WazuhSvc
+NET START SplunkForwarder
 ```
 
-- [ ] Agent shows **Active** in the dashboard again
-- [ ] New test events flow (`whoami` produces fresh Sysmon EID 1)
+- [ ] Forwarder shows in `splunk list forward-server`; events flow again (test with `whoami`)
+- [ ] New events indexed after the gap start time
 - [ ] Gap window timestamps recorded in the report
 
 ## 6. Evidence Checklist
 
 - [ ] `09a_wevtutil_clear.png`
 - [ ] `09_event_1102_log_cleared.png`
-- [ ] `09b_agent_disconnected.png`
+- [ ] `09b_forwarder_stopped.png`
 
 ## 7. Lessons / Tuning Notes *(fill after execution)*
 
-- Why doesn't clearing the log erase Wazuh's copy? (forwarded vs local retention — explain it)
-- What production control detects agent tampering *even when the agent can't report it*?
-  (e.g. manager-side heartbeat alerting, redundant log shipping — put your answer in the report)
+- Why doesn't clearing the local log erase Splunk's copy? (forwarded/indexed vs local
+  retention — explain it in one sentence for your report)
+- What production control detects forwarder tampering *even when the forwarder can't report it*?
+  (e.g. index-time volume anomaly alerting, redundant forwarders, host-based service
+  monitoring — put your answer in the report)
