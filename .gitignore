@@ -1,0 +1,23 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Never commit lab VMs or install media (huge + licensing)
+*.ova
+*.ovf
+*.vdi
+*.vmdk
+*.vhdx
+*.iso
+*.iso.download
+
+# Scratch / raw capture material
+*.tmp
+*.log
+raw-captures/
