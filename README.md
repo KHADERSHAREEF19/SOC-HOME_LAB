@@ -1,19 +1,24 @@
-<img width="1472" height="680" alt="image" src="https://github.com/user-attachments/assets/5c6f5acc-68e4-4069-bdbf-fd55d04e094d" />
-
 <h1 align="center">🛡️ SOC Home Lab — Detection Engineering & Adversary Simulation</h1>
 
 <p align="center">
-  <b>A fully isolated, cost-free SOC lab: Windows telemetry, Wazuh SIEM/XDR, Sysmon,<br>
-  and 6 MITRE ATT&CK-mapped attack simulations — detected, triaged, and reported.</b>
+  <b>A fully isolated, cost-free SOC lab: Windows Server Active Directory telemetry,<br>
+  Splunk Enterprise, a real Universal Forwarder pipeline, and 6 MITRE ATT&CK-mapped<br>
+  attack simulations — detected with SPL, triaged, and reported.</b>
 </p>
 
 <p align="center">
   <img alt="Status" src="https://img.shields.io/badge/Status-Active-blue">
-  <img alt="SIEM" src="https://img.shields.io/badge/SIEM-Wazuh%204.x-238636">
+  <img alt="SIEM" src="https://img.shields.io/badge/SIEM-Splunk%20Enterprise-65a637">
   <img alt="MITRE ATT&CK" src="https://img.shields.io/badge/MITRE%20ATT%26CK-Mapped-d73a49">
-  <img alt="Telemetry" src="https://img.shields.io/badge/Telemetry-Sysmon%20%2B%20Windows%20Event%20Logs-1f6feb">
+  <img alt="Telemetry" src="https://img.shields.io/badge/Telemetry-WinEventLog%20%2B%20Sysmon-1f6feb">
+  <img alt="Query Language" src="https://img.shields.io/badge/Queries-SPL-000000">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-yellow">
 </p>
+
+<!-- Once you capture your Splunk dashboard screenshot, uncomment to use it as the hero:
+
+<img width="1472" height="680" alt="Splunk SOC Dashboard" src="screenshots/11_splunk_dashboard.png" />
+-->
 
 ---
 
@@ -21,8 +26,8 @@
 
 1. [Project Overview & Objectives](#-1-project-overview--objectives)
 2. [Architecture & Network Isolation](#-2-architecture--network-isolation)
-3. [Telemetry Pipeline](#-3-telemetry-pipeline)
-4. [Detection Engineering](#-4-detection-engineering)
+3. [Telemetry Pipeline (Universal Forwarder → Splunk)](#-3-telemetry-pipeline-universal-forwarder--splunk)
+4. [Detection Engineering with SPL](#-4-detection-engineering-with-spl)
 5. [Adversary Simulation Matrix](#-5-adversary-simulation-matrix)
 6. [Incident Response & Reporting](#-6-incident-response--reporting)
 7. [Evidence & Screenshots](#-7-evidence--screenshots)
@@ -35,31 +40,33 @@
 
 ## 📖 1. Project Overview & Objectives
 
-This project is a **virtualized Security Operations Center (SOC) lab** built to practice the full
-detection & response lifecycle the way it happens in production:
+This project is a **virtualized Security Operations Center (SOC) lab** built to practice the
+full detection & response lifecycle the way it happens in production:
 
-> **Simulate an attack → generate real telemetry → detect it with engineered rules →
-> triage the alert → document and report it like a Tier-1 SOC Analyst.**
+> **Simulate an attack → generate real Windows/AD telemetry → detect it with SPL →
+> triage the alert in Splunk → document and report it like a Tier-1 SOC Analyst.**
 
-Unlike lab write-ups that upload flat sample CSV files, every event in this project is produced by
-**real attack traffic** crossing a **real network** and ingested through a **real forwarding pipeline**
-(Wazuh agent → Wazuh manager over TLS on port 1514).
+Unlike lab write-ups that upload flat sample CSV files, every event in this project is
+produced by **real attack traffic** against a **real Domain Controller** and ingested
+through a **real forwarding pipeline** (Splunk Universal Forwarder → Splunk Enterprise
+indexer over TCP 9997 — the same S2S pipeline enterprises run).
 
 ### Objectives
 
 | # | Objective | Where it lives |
 |---|-----------|----------------|
-| 1 | Build an isolated 3-node lab (attacker / target / SIEM) with no exposure to the host network | [`architecture/`](architecture/) |
-| 2 | Ship Windows Security, Sysmon, PowerShell and Defender telemetry to a SIEM | [`configs/`](configs/) |
-| 3 | Engineer custom detection rules mapped to MITRE ATT&CK | [`configs/local_rules.xml`](configs/local_rules.xml) |
+| 1 | Build an isolated 3-node lab (attacker / AD Domain Controller / Splunk) with the host OS fully segregated | [`architecture/`](architecture/) |
+| 2 | Ship `Security`, `System` and `Sysmon` telemetry to Splunk via a Universal Forwarder | [`configs/`](configs/) |
+| 3 | Engineer 6 production-ready SPL detections, mapped to MITRE ATT&CK and scheduled as saved searches | [`configs/savedsearches.conf`](configs/savedsearches.conf) · [`queries/`](queries/) |
 | 4 | Execute 6 adversary simulations covering the ATT&CK kill chain | [`simulations/`](simulations/) |
-| 5 | Investigate the resulting alerts with SIEM queries and write incident reports | [`queries/`](queries/) · [`incident-reports/`](incident-reports/) |
+| 5 | Investigate the resulting alerts with SPL and write incident reports | [`queries/`](queries/) · [`incident-reports/`](incident-reports/) |
 
 ### Key Skills Demonstrated
 
-`SIEM deployment & tuning` · `Log forwarding (Windows event channels)` · `Detection engineering (custom rules)`
-· `SPL / SIEM query design` · `MITRE ATT&CK mapping` · `Adversary emulation` · `Alert triage & escalation`
-· `Incident report writing` · `Network isolation` · `Sysmon telemetry`
+`Splunk Enterprise administration` · `SPL query design` · `Universal Forwarder deployment`
+· `Windows Event Log & Sysmon analysis` · `Detection engineering` · `MITRE ATT&CK mapping`
+· `Adversary emulation` · `Alert triage & escalation` · `Incident report writing`
+· `Network isolation` · `Active Directory security telemetry`
 
 ---
 
@@ -67,117 +74,122 @@ Unlike lab write-ups that upload flat sample CSV files, every event in this proj
 
 ```mermaid
 flowchart LR
-    subgraph lab ["VirtualBox Internal Network · 192.168.1.0/24 · isolated from host & internet"]
+    subgraph lab ["Isolated Internal Virtual Network · Host-Only / Internal Adapter · 192.168.1.0/24"]
         direction LR
-        K["<b>⚔️ Kali Linux</b><br>192.168.1.8<br><i>Adversary</i>"]
-        W["<b>💻 Windows 11 Enterprise</b><br>192.168.1.11<br><i>Target endpoint</i><br>Sysmon + Wazuh Agent"]
-        U["<b>🐧 Ubuntu Server 22.04</b><br>192.168.1.25<br><i>Wazuh Manager / SIEM</i><br>Wazuh Dashboard :443"]
+        K["<b>⚔️ Kali Linux</b><br>192.168.1.8<br><i>Adversary</i><br>Browser → Splunk Web :8000"]
+        W["<b>🖥️ Windows Server 2022</b><br>192.168.1.11<br><i>Domain Controller / Active Directory</i><br>Sysmon + Splunk Universal Forwarder"]
+        U["<b>🐧 Ubuntu Server 22.04</b><br>192.168.1.25<br><i>Splunk Enterprise</i><br>Indexer + Search Head"]
     end
-    K -->|"① Attacks: Nmap · Hydra · PowerShell · schtasks"| W
-    W -->|"② Telemetry: Security · Sysmon · PowerShell · Defender channels"| W
-    W -->|"③ Encrypted log shipping · TLS :1514"| U
-    U -->|"④ Correlation, alerting & investigation"| U
+    K -->|"① Attacks: Nmap · AD enumeration · Hydra · PowerShell · net user/group · EICAR"| W
+    W -->|"② Universal Forwarder → TCP 9997 (S2S)<br>WinEventLog: Security · System · Sysmon"| U
+    U -->|"③ Splunk Web :8000 — dashboard & SPL search (opened from Kali)"| K
 ```
 
 ### Network Breakdown
 
 | Host Role | OS | IP Address | VM Resources | Function |
 |-----------|----|------------|--------------|----------|
-| **Attacker** | Kali Linux | `192.168.1.8` | 2 vCPU / 4 GB / 20 GB | Adversary emulation: recon, brute force, payload delivery |
-| **Target** | Windows 11 Enterprise | `192.168.1.11` | 2 vCPU / 4 GB / 60 GB | User endpoint; Sysmon + Windows Event Logs; Wazuh agent |
-| **SIEM** | Ubuntu Server 22.04 LTS | `192.168.1.25` | 4 vCPU / 8 GB / 50 GB | Wazuh Manager (indexer + server) & Dashboard (search head) |
+| **Attacker** | Kali Linux | `192.168.1.8` | 2 vCPU / 4 GB / 20 GB | Adversary emulation: recon, brute force, payload delivery; Splunk Web client |
+| **Target** | Windows Server 2022 | `192.168.1.11` | 2–4 vCPU / 4–8 GB / 60 GB | **Domain Controller / Active Directory**; Sysmon + Splunk Universal Forwarder |
+| **SIEM** | Ubuntu Server 22.04 LTS | `192.168.1.25` | 4 vCPU / 8 GB / 50 GB | **Splunk Enterprise** — indexer & search head (data on TCP 9997, web on 8000) |
 
 ### 🔒 Network Isolation Statement
 
-All three VMs attach to a **VirtualBox Host-Only (internal) network** (`192.168.1.0/24`):
+All three VMs attach to an **isolated internal virtual network** (VirtualBox Host-Only /
+Internal Adapter, `192.168.1.0/24`):
 
-- The **host machine is not a member** of the lab subnet and is never targeted by simulations.
-- The **lab has no route to the internet** at attack time (ISOs and agents are staged beforehand).
-- Kali reaches the Wazuh dashboard **only through the internal subnet** (`https://192.168.1.25`).
+- The **host OS is completely segregated** — it is not a member of the lab subnet and is
+  never targeted by simulations.
+- The **lab has no route to the internet** at attack time (ISOs and installers are staged beforehand).
+- The **Splunk Web dashboard is accessed directly from Kali Linux** via web browser on
+  **port 8000** (`http://192.168.1.25:8000`) — strictly over the internal subnet.
 - All attack traffic is confined to `192.168.1.8 → 192.168.1.11`. Nothing leaves the lab.
 
 See [`architecture/README.md`](architecture/README.md) for the full topology and diagram source.
 
 ---
 
-## 📡 3. Telemetry Pipeline
+## 📡 3. Telemetry Pipeline (Universal Forwarder → Splunk)
 
 ```
-[ Kali 192.168.1.8 ] ── attacks ──▶ [ Windows 11 192.168.1.11 ]
-                                          │
-                     Windows Event Channels + Sysmon (SwiftOnSecurity config)
-                                          │
-                                  [ Wazuh Agent ]
-                                          │  TLS encrypted, port 1514
-                                          ▼
-                             [ Wazuh Manager 192.168.1.25 ]
-                                          │
-                        decode → rule match → MITRE tagging → alert
-                                          ▼
-                             [ Wazuh Dashboard — SOC view ]
+[ Windows Server DC 192.168.1.11 ]                 [ Ubuntu 192.168.1.25 ]
+  Security · System · Sysmon logs                    Splunk Enterprise
+          │                                          (Indexer + Search Head)
+          │  Splunk Universal Forwarder
+          │  inputs.conf  → collect WinEventLog
+          │  outputs.conf → tcpout
+          └──────────►  TCP 9997 (S2S)  ──────────►  index=main
+                                                              │
+                                            SPL saved searches & alerts
+                                                              ▼
+                                            Splunk Web :8000 (from Kali's browser)
 ```
 
-### Log Sources Ingested (agent-side `localfile` blocks — see [`configs/wazuh-agent-ossec.conf`](configs/wazuh-agent-ossec.conf))
+### Forwarder configuration (see [`configs/`](configs/))
+
+| File | Purpose |
+|------|---------|
+| [`configs/inputs.conf`](configs/inputs.conf) | `[WinEventLog://Security]`, `[WinEventLog://System]`, `[WinEventLog://Microsoft-Windows-Sysmon/Operational]` with `renderXml = true`, `evt_resolve_ad_obj = 1` → all to `index = main` |
+| [`configs/outputs.conf`](configs/outputs.conf) | `[tcpout]` → `primary_indexers` → `<UBUNTU_SPLUNK_IP>:9997` |
+
+### Log Sources Ingested
 
 | Event Channel | Examples of what it gives us | ATT&CK use |
 |---------------|------------------------------|-------------|
-| `Security` | 4624/4625 logons, 4688 process creation, 4698/4720 account & task changes, 1102 log cleared | Credential Access, Persistence, Defense Evasion |
-| `Microsoft-Windows-Sysmon/Operational` | EID 1 process, EID 3 network, EID 11 file create, EID 13 registry | Execution, Discovery, Persistence |
-| `Windows PowerShell` | Script block logging (4104), pipeline execution | Execution |
-| `Microsoft-Windows-Windows Defender/Operational` | 1116/1117 malware detected/action taken | Execution, Impact |
+| `WinEventLog:Security` | 4624/4625 logons, 4661/4662 AD object access, 4720/4728/4732 account & group changes, 1102 log wiped | Credential Access, Discovery, Persistence, Defense Evasion |
+| `WinEventLog:System` | Service state changes (e.g. 7036 — forwarder stopped) | Defense Evasion |
+| `WinEventLog:Microsoft-Windows-Sysmon/Operational` | EID 1 process creation, EID 11 file create (XML) | Execution |
 
-> **Realism note:** telemetry is forwarded by a production agent (`WazuhSvc`) over an encrypted
-> channel — not uploaded as pre-made log files. Timestamps, host context and rule correlation
-> are exactly what a live SOC would see.
+> **Realism note:** telemetry is forwarded by a production **Splunk Universal Forwarder**
+> over the standard **S2S protocol on TCP 9997** — not uploaded as pre-made log files.
+> `evt_resolve_ad_obj = 1` resolves AD object GUIDs, exactly as an enterprise deployment does.
 
 ---
 
-## 🔍 4. Detection Engineering
+## 🔍 4. Detection Engineering with SPL
 
-Custom detections are authored in Wazuh's rule language (XML) and mapped to MITRE ATT&CK.
-Full rule file: [`configs/local_rules.xml`](configs/local_rules.xml) ·
-Investigation queries: [`queries/`](queries/)
+All detections are **production-ready SPL** kept as runnable files in [`queries/`](queries/)
+and deployed as scheduled alerts in [`configs/savedsearches.conf`](configs/savedsearches.conf).
+Each one is mapped to MITRE ATT&CK.
 
-| Rule ID | Detection | ATT&CK | Severity |
-|---------|-----------|--------|----------|
-| `100101` | Brute force: ≥8 failed logons (4625) from one source in 120 s | T1110.001 | 🔴 High |
-| `100102` | Successful logon immediately after brute-force burst | T1110.001 / T1078 | 🔴 High |
-| `100110` | Suspicious PowerShell: encoded/hidden command, `downloadstring`, `IEX` | T1059.001 / T1105 | 🟠 Medium |
-| `100120` | Windows audit log cleared via `wevtutil` | T1070.001 | 🔴 High |
-| `100130` | Scheduled task creation (`schtasks /create`) | T1053.005 | 🟠 Medium |
-| `100135` | Registry Run-key persistence (Sysmon EID 13) | T1547.001 | 🟠 Medium |
-| `100140` | Recon command cluster (`whoami`, `systeminfo`, `net user`…) | T1082 / T1087 / T1033 | 🟡 Low–Med |
-| `100145` | EICAR test-file / known malicious artifact write | T1204.002 | 🟠 Medium |
+| Saved search | SPL highlights | ATT&CK | Severity |
+|--------------|----------------|--------|----------|
+| AD Enumeration - Object Access 4662 4661 | `stats count by Account_Name, Object_Type, Source_Network_Address` | T1087.002 · T1069.002 | 🟡 Medium |
+| Brute Force - 4625 4624 Correlation | `count(eval(EventCode=4625)) … \| where Failed_Logons > 5 \| eval Status=if(Successful_Logons>0, "CRITICAL…")` | T1110.001 · T1078 | 🔴 Critical |
+| Suspicious PowerShell - Sysmon EventCode 1 | `Image="*powershell.exe"` + `DownloadString`/`EncodedCommand`/`bypass` | T1059.001 · T1105 | 🟠 High |
+| Persistence - Account Creation and Group Elevation | `EventCode=4720/4732/4728` + `eval Action=case(…)` | T1136.001 · T1098 | 🟠 High |
+| Defense Evasion - Audit Log Cleared 1102 | `EventCode=1102 \| table … Account_Name, Log_Name` | T1070.001 | 🔴 High |
+| Malware Test - EICAR File Creation Sysmon 11 | `EventCode=11 \| search TargetFilename="*.eicar*"` | T1204.002 · T1105 | 🟠 High |
 
-### Example investigation query (Wazuh Dashboard — OpenSearch DQL)
+### Example: the flagship brute-force detection
 
-```
-rule.groups: brute_force AND data.win.eventdata.ipAddress : 192.168.1.8
-```
-
-```
-data.win.system.eventID : (4625 or 4624) AND agent.name : WIN11-PRO
-| summarize count() by data.win.eventdata.ipAddress, data.win.eventdata.targetUserName, data.win.system.eventID
+```spl
+index=main sourcetype="WinEventLog:Security" (EventCode=4625 OR EventCode=4624)
+| stats count(eval(EventCode=4625)) as Failed_Logons, count(eval(EventCode=4624)) as Successful_Logons by Account_Name, Source_Network_Address
+| where Failed_Logons > 5
+| eval Status=if(Successful_Logons>0, "CRITICAL: Potential Compromise After Brute Force", "WARNING: Brute Force Attempt")
 ```
 
-More ready-to-run queries (brute force, PowerShell, persistence, defense evasion, discovery)
-in [`queries/`](queries/README.md).
+The `Status` field encodes the triage decision **in the query itself** — attempts-only vs
+confirmed compromise. More ready-to-run searches and investigation pivots:
+[`queries/README.md`](queries/README.md) · raw `.spl` files: [`queries/`](queries/).
 
 ---
 
 ## 🎯 5. Adversary Simulation Matrix
 
 Six simulations spanning the ATT&CK kill chain — each documented as a repeatable runbook
-with attack commands, expected telemetry, detection logic, triage steps and an evidence checklist.
+with attack commands, expected EventCodes, the detection SPL, triage steps and an evidence
+checklist.
 
 | ID | Simulation | ATT&CK Technique | Tactic | Primary Telemetry |
 |----|-----------|------------------|--------|-------------------|
-| **SIM-01** | [Network & Host Discovery](simulations/SIM-01-network-host-discovery.md) | T1046 · T1082 · T1087 | Reconnaissance / Discovery | Sysmon EID 1 (recon commands) + visibility-gap analysis |
+| **SIM-01** | [AD Enumeration & Network Discovery](simulations/SIM-01-ad-enumeration.md) | T1087.002 · T1069.002 · T1046 | Discovery | Security 4662/4661 (+ gap analysis for scans) |
 | **SIM-02** | [Brute Force → Valid Account](simulations/SIM-02-brute-force.md) | T1110.001 · T1078 | Credential Access | Security 4625 → 4624 |
-| **SIM-03** | [Suspicious PowerShell Execution](simulations/SIM-03-suspicious-powershell.md) | T1059.001 · T1105 | Execution | Sysmon EID 1, PowerShell 4104 |
-| **SIM-04** | [Persistence: Scheduled Task & Run Key](simulations/SIM-04-persistence.md) | T1053.005 · T1547.001 | Persistence | Security 4698, Sysmon EID 1 / 13 |
-| **SIM-05** | [Defense Evasion: Log Clearing & Agent Tamper](simulations/SIM-05-defense-evasion.md) | T1070.001 · T1562.001 | Defense Evasion | Security 1102, agent-disconnect alerts |
-| **SIM-06** | [Malware Delivery: EICAR Test File](simulations/SIM-06-malware-delivery.md) | T1204.002 · T1105 | Execution | Defender 1116/1117, Sysmon EID 11 |
+| **SIM-03** | [Suspicious PowerShell Execution](simulations/SIM-03-suspicious-powershell.md) | T1059.001 · T1105 | Execution | Sysmon EID 1 |
+| **SIM-04** | [Account Creation & Group Elevation](simulations/SIM-04-account-persistence.md) | T1136.001 · T1098 | Persistence | Security 4720/4732/4728 |
+| **SIM-05** | [Defense Evasion: Audit Log Wipe & Forwarder Tamper](simulations/SIM-05-defense-evasion.md) | T1070.001 · T1562.001 | Defense Evasion | Security 1102 (+ System 7036) |
+| **SIM-06** | [Malware Delivery: EICAR Test File](simulations/SIM-06-malware-delivery.md) | T1204.002 · T1105 | Execution | Sysmon EID 11 |
 
 **Status legend:** each runbook carries a status header (`Planned → Executed → Documented`).
 Screenshot evidence lands in [`screenshots/`](screenshots/) following a strict naming convention.
@@ -205,16 +217,17 @@ Evidence is captured **after executing each simulation** and committed to
 
 | # | Screenshot | Proves |
 |---|-----------|--------|
-| 01 | `01_virtualbox_network.png` | Proper network isolation (host-only adapter) |
-| 02 | `02_wazuh_agent_active.png` | Real agent enrollment & log forwarding |
-| 03 | `03_sysmon_event_viewer.png` | Sysmon telemetry on the endpoint |
+| 01 | `01_virtualbox_network.png` | Proper network isolation (host-only / internal adapter) |
+| 02 | `02_splunk_forward_server.png` | Real Universal Forwarder pipeline (9997 ingestion) |
+| 03 | `03_sysmon_event_viewer.png` | Sysmon telemetry arriving in Splunk (XML) |
 | 04 | `04_hydra_bruteforce.png` | Attack execution from Kali |
-| 05 | `05_event_4625_spike.png` | Failed-logon spike in raw Security log |
-| 06 | `06_wazuh_alert_bruteforce.png` | Custom rule firing in the SIEM |
-| 07 | `07_powershell_alert.png` | Suspicious PowerShell detection |
-| 08 | `08_persistence_alert.png` | Persistence detection |
+| 05 | `05_event_4625_spike.png` | Failed-logon spike in SPL results |
+| 06 | `06_splunk_alert_bruteforce.png` | Saved search firing with `Status` column |
+| 07 | `07_splunk_alert_powershell.png` | Suspicious PowerShell detection |
+| 08 | `08_splunk_alert_account.png` | Persistence (account/group) detection |
 | 09 | `09_event_1102_log_cleared.png` | Defense-evasion detection |
-| 10 | `10_defender_eicar_alert.png` | Malware detection |
+| 10 | `10_splunk_alert_eicar.png` | Malware-delivery detection |
+| 11 | `11_splunk_dashboard.png` | SOC dashboard: correlation & visualization |
 
 > ⚠️ **Authenticity note:** screenshots are captured from **this lab only** — they are never
 > generated or borrowed. Recruiters verify this in interviews; authenticity always wins.
@@ -223,16 +236,16 @@ Evidence is captured **after executing each simulation** and committed to
 Once screenshots are captured, uncomment to embed them here:
 
 ![Network Isolation](screenshots/01_virtualbox_network.png)
-![Brute Force Alert](screenshots/06_wazuh_alert_bruteforce.png)
-![Correlation Dashboard](screenshots/11_wazuh_dashboard_correlation.png)
+![Brute Force Alert](screenshots/06_splunk_alert_bruteforce.png)
+![SOC Dashboard](screenshots/11_splunk_dashboard.png)
 -->
 
 ---
 
 ## 🚀 8. Lab Setup & Installation Guide
 
-> Full detail lives in [`architecture/`](architecture/) and [`configs/`](configs/).
-> All software is free / open-source — total cost: **$0**.
+> Full detail lives in [`architecture/`](architecture/) and [`configs/README.md`](configs/README.md).
+> All software is free or evaluation-tier — total cost: **$0**.
 
 ### 📥 Downloads
 
@@ -240,61 +253,67 @@ Once screenshots are captured, uncomment to embed them here:
 |-----------|------|
 | Hypervisor | [Oracle VirtualBox](https://www.virtualbox.org/wiki/Downloads) |
 | Adversary OS | [Kali Linux ISO](https://www.kali.org/get-kali/) |
-| Target OS | [Windows 11 Enterprise (Eval)](https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise) |
+| Target OS | [Windows Server 2022 Evaluation](https://www.microsoft.com/en-us/evalcenter/evaluate-windows-server-2022) |
 | SIEM host OS | [Ubuntu Server 22.04 LTS](https://ubuntu.com/download/server) |
-| SIEM platform | [Wazuh Quickstart](https://documentation.wazuh.com/current/quickstart.html) |
-| Telemetry agent | [Microsoft Sysmon](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon) + [SwiftOnSecurity config](https://github.com/SwiftOnSecurity/sysmon-config) |
+| SIEM platform | [Splunk Enterprise (free lab license)](https://www.splunk.com/en_us/download/splunk-enterprise.html) |
+| Telemetry agent | [Splunk Universal Forwarder](https://www.splunk.com/en_us/download/universal-forwarder.html) |
+| Endpoint telemetry | [Microsoft Sysmon](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon) + [SwiftOnSecurity config](https://github.com/SwiftOnSecurity/sysmon-config) |
 
 ### Phase 1 — VirtualBox Network Configuration
 
 1. Open **VirtualBox** → `File` → `Tools` → `Network Manager`.
-2. Create a **Host-Only Network** (`192.168.1.0/24`, DHCP off) and attach **all three VMs** to it.
-3. Verify none of the VMs hold a NAT/bridged adapter at attack time — this keeps the lab isolated.
+2. Create a **Host-Only / Internal Network** (`192.168.1.0/24`, DHCP off) and attach
+   **all three VMs** to it.
+3. Verify none of the VMs hold a NAT/bridged adapter at attack time — this keeps the lab
+   isolated and the host OS segregated.
 
-### Phase 2 — Ubuntu Server (Wazuh Manager)
-
-```bash
-sudo apt update && sudo apt upgrade -y
-curl -sO https://packages.wazuh.com/4.7/wazuh-install.sh
-sudo bash wazuh-install.sh -a
-```
+### Phase 2 — Ubuntu Server (Splunk Enterprise)
 
 1. Static IP: `192.168.1.25` · 4 vCPU / 8 GB RAM / 50 GB disk.
-2. Dashboard: `https://192.168.1.25` (self-signed TLS cert).
-3. Install the custom detection rules: copy [`configs/local_rules.xml`](configs/local_rules.xml)
-   to `/var/ossec/etc/rules/local_rules.xml` then `sudo systemctl restart wazuh-manager`.
+2. Install Splunk Enterprise (tarball/deb from splunk.com), then enable the receiver:
 
-### Phase 3 — Windows 11 Endpoint
+   ```bash
+   cd /opt/splunk/bin
+   ./splunk enable listen 9997 --accept-license --answer-yes --no-prompt
+   ./splunk start --accept-license --answer-yes --no-prompt
+   ```
 
-1. Static IP: `192.168.1.11` · 2 vCPU / 4 GB RAM / 60 GB disk.
-2. Install **Sysmon** with the SwiftOnSecurity config:
+3. Deploy the detection content:
+   `cp configs/savedsearches.conf /opt/splunk/etc/apps/search/local/ && ./splunk restart`
+4. Splunk Web: `http://192.168.1.25:8000` (admin account created at first login).
 
-```powershell
-.\Sysmon64.exe -i sysmonconfig-export.xml
-```
+### Phase 3 — Windows Server 2022 (Domain Controller / Target)
 
-3. Install the **Wazuh agent** and enroll it with the manager:
+1. Static IP: `192.168.1.11` · 2–4 vCPU / 4–8 GB RAM / 60 GB disk.
+2. Add AD DS and promote to a new forest (e.g. `lab.local`):
 
-```powershell
-.\wazuh-agent-4.7.0.msi /q WAZUH_MANAGER='192.168.1.25' WAZUH_REGISTRATION_SERVER='192.168.1.25'
-NET START WazuhSvc
-```
+   ```powershell
+   Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+   Install-ADDSForest -DomainName "lab.local" -InstallDns
+   ```
 
-4. Apply [`configs/wazuh-agent-ossec.conf`](configs/wazuh-agent-ossec.conf) to forward the
-   `Security`, `Sysmon`, `PowerShell` and `Defender` channels.
+3. Enable the audit policy needed for AD/credential events
+   (see [`configs/sysmon-config-notes.md`](configs/sysmon-config-notes.md)).
+4. Install **Sysmon** with the SwiftOnSecurity config: `.\Sysmon64.exe -i sysmonconfig-export.xml`
+5. Install the **Splunk Universal Forwarder**, then copy [`configs/inputs.conf`](configs/inputs.conf)
+   and [`configs/outputs.conf`](configs/outputs.conf) into
+   `C:\Program Files\SplunkUniversalForwarder\etc\system\local\`
+   (replace `<UBUNTU_SPLUNK_IP>` with `192.168.1.25`) and restart the forwarder.
+6. Verify: `splunk list forward-server` → `192.168.1.25:9997`.
 
-### Phase 4 — Kali Linux (Adversary)
+### Phase 4 — Kali Linux (Adversary + Splunk Web client)
 
 1. Static IP: `192.168.1.8` · 2 vCPU / 4 GB RAM / 20 GB disk.
 2. Confirm reachability: `ping 192.168.1.11`.
-3. Run the simulations from [`simulations/`](simulations/) **in order**.
+3. Open **Splunk Web** from the Kali browser: `http://192.168.1.25:8000`.
+4. Run the simulations from [`simulations/`](simulations/) **in order**.
 
 ### ✅ Verification
 
-- [ ] `192.168.1.11` shows **Active** under Wazuh → **Agents**.
-- [ ] Events from all four Windows channels appear in **Threat intelligence → Security Events**.
-- [ ] Executing a test `whoami` on the endpoint generates a process-creation event within seconds.
-- [ ] Running SIM-02 raises custom rule `100101` on the dashboard.
+- [ ] `index=main | stats count by sourcetype, host` shows `WinEventLog:Security`, `WinEventLog:System`, `WinEventLog:Microsoft-Windows-Sysmon/Operational` from `WIN-DC01`.
+- [ ] Splunk Web opens from the Kali browser on `http://192.168.1.25:8000`.
+- [ ] Executing a test `whoami` on the DC produces a Sysmon EventCode 1 in Splunk within seconds.
+- [ ] Running SIM-02 triggers the saved search **Brute Force - 4625 4624 Correlation**.
 
 ---
 
@@ -307,19 +326,22 @@ SOC-HOME_LAB/
 ├── architecture/
 │   └── README.md                 ← Topology, isolation design, diagram source
 ├── configs/
-│   ├── wazuh-agent-ossec.conf    ← Real log-forwarding pipeline (event channels)
-│   ├── local_rules.xml           ← Custom detection rules (MITRE-mapped)
-│   └── sysmon-config-notes.md    ← Sysmon deployment notes & key Event IDs
+│   ├── README.md                 ← Deployment order & verification steps
+│   ├── inputs.conf               ← Universal Forwarder: WinEventLog collection
+│   ├── outputs.conf              ← Universal Forwarder → indexer (TCP 9997)
+│   ├── savedsearches.conf        ← 6 SPL detections as scheduled alerts
+│   └── sysmon-config-notes.md    ← Sysmon deployment + audit policy (DC)
 ├── queries/
-│   ├── README.md                 ← How to investigate in the Wazuh dashboard
-│   ├── credential-access.md      ← Brute force / account queries
-│   ├── execution.md              ← PowerShell & malware queries
-│   ├── persistence.md            ← Scheduled task / Run-key queries
-│   ├── defense-evasion.md        ← Log clearing / tamper queries
-│   └── discovery.md              ← Recon & discovery queries
+│   ├── README.md                 ← Query index, field reference, triage pivots (SPL)
+│   ├── 01-ad-enumeration.spl     ← SIM-01 detection (4662/4661)
+│   ├── 02-brute-force.spl        ← SIM-02 detection (4625/4624)
+│   ├── 03-powershell-execution.spl ← SIM-03 detection (Sysmon 1)
+│   ├── 04-account-persistence.spl  ← SIM-04 detection (4720/4732/4728)
+│   ├── 05-log-wipe.spl           ← SIM-05 detection (1102)
+│   └── 06-eicar-file-create.spl  ← SIM-06 detection (Sysmon 11)
 ├── simulations/
 │   ├── README.md                 ← Simulation plan, safety rules, ATT&CK matrix
-│   └── SIM-0*.md                 ← 6 attack runbooks (commands → detection → triage)
+│   └── SIM-0*.md                 ← 6 attack runbooks (commands → SPL → triage)
 ├── incident-reports/
 │   ├── README.md                 ← Triage methodology & ticket checklist
 │   ├── template.md               ← Reusable IR template
@@ -334,23 +356,25 @@ SOC-HOME_LAB/
 
 | Domain | Evidence in this repo |
 |--------|----------------------|
-| SIEM administration | Wazuh all-in-one deployment, agent enrollment, rule management |
-| Detection engineering | [`configs/local_rules.xml`](configs/local_rules.xml) — custom, threshold-based, MITRE-mapped |
-| Log analysis | Windows Security / Sysmon / PowerShell / Defender channels |
-| Query design | [`queries/`](queries/) — investigation queries per attack class |
+| Splunk administration | Enterprise install, receiver on 9997, saved searches, dashboard |
+| Query language | [`queries/*.spl`](queries/) — production-ready SPL (`stats`, `eval`, `where`, `case`) |
+| Detection engineering | [`configs/savedsearches.conf`](configs/savedsearches.conf) — scheduled, ATT&CK-mapped, tuned |
+| Log forwarding | [`configs/inputs.conf`](configs/inputs.conf) + [`outputs.conf`](configs/outputs.conf) — real UF pipeline |
+| Log analysis | Windows Security (4624/4625/4661/4662/4720/4728/4732/1102) + Sysmon (1/11) |
 | Adversary emulation | [`simulations/`](simulations/) — 6 ATT&CK-mapped runbooks |
 | Incident response | [`incident-reports/`](incident-reports/) — triage, containment, escalation |
 | Technical communication | This README + structured incident reports |
-| Lab engineering | Isolated virtual network, resource planning, repeatability |
+| Lab engineering | Isolated internal network, AD domain, resource planning, repeatability |
 
 ---
 
 ## ⚖️ 11. Legal & Authorized Use
 
-All attack simulations were executed **exclusively inside an isolated host-only virtual network**
-against systems I own and control, for **educational and defensive-detection purposes only**.
-No traffic targeted any external or third-party system. Techniques are documented so that
-**defenders** can detect them — never to be used against systems without explicit authorization.
+All attack simulations were executed **exclusively inside an isolated internal virtual
+network** against systems I own and control, for **educational and defensive-detection
+purposes only**. No traffic targeted any external or third-party system. Techniques are
+documented so that **defenders** can detect them — never to be used against systems
+without explicit authorization.
 
 ---
 

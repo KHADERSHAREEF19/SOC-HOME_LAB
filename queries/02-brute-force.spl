@@ -1,0 +1,4 @@
+index=main sourcetype="WinEventLog:Security" (EventCode=4625 OR EventCode=4624)
+| stats count(eval(EventCode=4625)) as Failed_Logons, count(eval(EventCode=4624)) as Successful_Logons by Account_Name, Source_Network_Address
+| where Failed_Logons > 5
+| eval Status=if(Successful_Logons>0, "CRITICAL: Potential Compromise After Brute Force", "WARNING: Brute Force Attempt")

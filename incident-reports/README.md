@@ -44,7 +44,7 @@ demonstrates that skill: how an alert becomes a documented, escalated incident.
 
 | Severity | Criteria (this lab) | Example |
 |----------|---------------------|---------|
-| 🔴 Critical | Confirmed compromise: valid creds used, persistence, or defenses impaired | SIM-02 success (rule `100102`), SIM-05 |
+| 🔴 Critical | Confirmed compromise: valid creds used, persistence, or defenses impaired | SIM-02 success (`Status: CRITICAL…`), SIM-05 |
 | 🟠 High | Successful attack technique detected, scope contained | Brute-force burst, EICAR delivery |
 | 🟡 Medium | Suspicious activity, no confirmed success | Encoded PowerShell without follow-on |
 | 🔵 Low | Recon/noise needing monitoring only | Standalone `whoami` |

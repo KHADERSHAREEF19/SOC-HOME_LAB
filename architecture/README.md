@@ -10,53 +10,76 @@ adversary simulation traffic confined to the virtual environment.
 
 ```mermaid
 flowchart TB
-    subgraph host ["Host Machine (NOT part of the lab)"]
-        direction LR
+    subgraph host ["Host Machine (NOT part of the lab — fully segregated)"]
         HV["Oracle VirtualBox"]
     end
 
-    subgraph lab ["VirtualBox Host-Only Network · 192.168.1.0/24"]
+    subgraph lab ["Isolated Internal Virtual Network · Host-Only / Internal Adapter · 192.168.1.0/24"]
         direction LR
-        K["<b>Kali Linux</b><br>192.168.1.8<br>2 vCPU / 4 GB / 20 GB<br><i>Adversary emulation</i>"]
-        W["<b>Windows 11 Enterprise</b><br>192.168.1.11<br>2 vCPU / 4 GB / 60 GB<br><i>Target endpoint</i><br>Sysmon · Wazuh Agent"]
-        U["<b>Ubuntu Server 22.04</b><br>192.168.1.25<br>4 vCPU / 8 GB / 50 GB<br><i>Wazuh Manager + Dashboard</i>"]
+        K["<b>Kali Linux</b><br>192.168.1.8<br>2 vCPU / 4 GB / 20 GB<br><i>Adversary emulation</i><br>+ Splunk Web access :8000"]
+        W["<b>Windows Server 2022</b><br>192.168.1.11<br>2-4 vCPU / 4-8 GB / 60 GB<br><i>Domain Controller / Active Directory</i><br>Sysmon + Splunk Universal Forwarder"]
+        U["<b>Ubuntu Server 22.04</b><br>192.168.1.25<br>4 vCPU / 8 GB / 50 GB<br><i>Splunk Enterprise</i><br>Indexer + Search Head"]
     end
 
     HV -.manages.-> lab
-    K -->|"Nmap · Hydra · PowerShell · schtasks · EICAR"| W
-    W -->|"Event channels + Sysmon → TLS :1514"| U
-    U -->|"Alerts · Correlation · Dashboard :443"| SOC["SOC Analyst View<br>https://192.168.1.25"]
+    K -->|"① Attacks: Nmap · AD enum · Hydra · PowerShell · net user/group · EICAR"| W
+    W -->|"② Universal Forwarder → TCP 9997<br>Security · System · Sysmon (XML)"| U
+    U -->|"③ Splunk Web dashboard :8000<br>(opened from Kali's browser)"| K
 ```
 
 ## Host Inventory
 
 | Host | OS | IP | vCPU | RAM | Disk | Role |
 |------|----|----|------|-----|------|------|
-| Kali Linux | Kali 2024.x | `192.168.1.8` | 2 | 4 GB | 20 GB | Attacker / adversary emulation |
-| Windows 11 | Windows 11 Enterprise (Eval) | `192.168.1.11` | 2 | 4 GB | 60 GB | Target endpoint (telemetry source) |
-| Ubuntu Server | Ubuntu 22.04 LTS | `192.168.1.25` | 4 | 8 GB | 50 GB | Wazuh Manager (SIEM), Dashboard |
+| Kali Linux | Kali 2024.x | `192.168.1.8` | 2 | 4 GB | 20 GB | Attacker / adversary emulation + Splunk Web client |
+| Windows Server | Windows Server 2022 | `192.168.1.11` | 2–4 | 4–8 GB | 60 GB | **Domain Controller / Active Directory** (target + log source) |
+| Ubuntu Server | Ubuntu 22.04 LTS | `192.168.1.25` | 4 | 8 GB | 50 GB | **Splunk Enterprise** (indexer + search head) |
+
+## The SIEM Platform: Splunk Enterprise
+
+| Component | Detail |
+|-----------|--------|
+| Splunk Enterprise | Ubuntu Server `192.168.1.25` — indexer **and** search head (all-in-one lab deployment) |
+| Data ingestion | **TCP 9997** (Splunk-to-Splunk / S2S protocol from the Universal Forwarder) |
+| Splunk Web UI | **TCP 8000** — accessed directly from **Kali Linux** via web browser |
+| Index | `main` (all lab telemetry) |
+| Detection content | [`../configs/savedsearches.conf`](../configs/savedsearches.conf) (scheduled SPL alerts) |
+
+## Log Source: Windows Server Domain Controller
+
+The target is not a plain workstation — it is a **Domain Controller with Active Directory**,
+which is why the detections cover enterprise-authentic telemetry:
+
+| Channel | Collected via | Key events |
+|---------|---------------|------------|
+| `WinEventLog://Security` | Universal Forwarder (`inputs.conf`) | 4624/4625 logons · 4661/4662 AD object access · 4720/4728/4732 account & group changes · 1102 log wiped |
+| `WinEventLog://System` | Universal Forwarder | Service/system health events |
+| `WinEventLog://Microsoft-Windows-Sysmon/Operational` | Universal Forwarder (`renderXml = true`) | EID 1 process creation · EID 11 file create |
 
 ## Network Isolation Design
 
 | Control | Implementation | Purpose |
 |---------|----------------|---------|
-| Host-only network | VirtualBox Host-Only adapter `vboxnet0`, `192.168.1.0/24`, DHCP disabled | VMs can talk to each other only; no internet path |
+| Isolated internal network | VirtualBox **Host-Only / Internal** adapter, `192.168.1.0/24` | VMs reach each other only; no internet path during attack windows |
+| Host OS segregation | The physical/host OS is **not** a member of the lab subnet and is never targeted | Hard boundary for authorized testing |
 | Static addressing | Manual IPs per the inventory table | Stable detection rules & evidence (source IP = attribution) |
-| No NAT/bridged adapters | Removed from all VMs during attack windows | Prevents any accidental traffic to the host or LAN |
-| Firewall posture | Windows inbound default-deny; only RDP/SMB/ICMP allowed from the subnet | Mirrors a hardened enterprise endpoint |
-| Encrypted shipping | Wazuh agent → manager over TLS (TCP 1514) | Realistic production telemetry pipeline |
+| Splunk Web access path | Kali browser → `http://192.168.1.25:8000` over the internal network only | Dashboard is reachable only inside the lab |
+| Forwarder shipping | UF → indexer on TCP `9997` (S2S) | Realistic production ingestion pipeline |
+| Firewall posture | DC inbound default-deny; only required services (SMB/RPC/WinRM/RDP/LDAP) allowed from the subnet | Mirrors a hardened domain controller |
 
-### Why Host-Only (not bridged)?
+### Why Host-Only / Internal (not bridged)?
 
-A bridged adapter would place Kali on the **real LAN**, meaning scan and brute-force traffic
-could touch the host or other household/office devices. A host-only network guarantees the
-authorized-testing boundary: everything visible in this repository happened between three VMs.
+A bridged adapter would place Kali on the **real LAN**, meaning scan and brute-force
+traffic could touch the host or other devices. The isolated internal network guarantees
+the authorized-testing boundary: everything documented here happened strictly between
+three VMs, with the host OS fully segregated.
 
 ### Optional hardening (stretch goals)
 
-- Add a **pfSense/OPNsense VM** in the path and ingest firewall logs into Wazuh.
-- Put Kali on a **separate internal segment** and route through the firewall for realistic
-  network-boundary telemetry (and to practice firewall-rule tuning).
+- Add a **pfSense/OPNsense VM** and ingest firewall logs into Splunk (`index=main sourcetype=pfsense`).
+- Enable **Windows Firewall logging** and ingest with a second `WinEventLog`/file input to
+  close the external-scan visibility gap (see SIM-01 runbook).
+- Run a **separate search head** VM to practice distributed Splunk architecture.
 
 ## Exporting the Diagram
 
