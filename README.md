@@ -15,12 +15,9 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-yellow">
 </p>
 
-<!-- Once you capture your Splunk dashboard screenshot, uncomment to use it as the hero:
-
-<img width="1472" height="680" alt="Splunk SOC Dashboard" src="screenshots/11_splunk_dashboard.png" />
+<img width="1472" height="680" alt="Splunk SOC Dashboard" src="" />
 -->
 
----
 
 ## 📌 Table of Contents
 
